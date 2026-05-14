@@ -1,9 +1,10 @@
 #Requires -Version 5.1
 <#
     Apply-Reports.ps1
-    Runner interactivo para aplicar os scripts SQL desta pasta contra a base de dados alvo.
-    Itera as subpastas por ordem numerica (0, 1, 2, ...) e dentro de cada pasta executa os .sql
-    por ordem numerica via sqlcmd. Suporta resume via .deploy-state.json e log em logs/.
+    Interactive runner that applies the SQL scripts in this folder against the target database.
+    Iterates subfolders in numeric order (0, 1, 2, ...) and, inside each folder, runs the .sql
+    files in numeric order via sqlcmd. Supports resume through .deploy-state.json and writes
+    a log under logs/.
 #>
 
 [CmdletBinding()]
@@ -54,7 +55,7 @@ function Read-Choice {
         if ($null -eq $k) { $k = '' }
         $k = ([string]$k).Trim().ToUpper()
         if ($Choices -contains $k) { return $k }
-        Write-Color "  Resposta invalida. Escolha: $($Choices -join ', ')" Red
+        Write-Color "  Invalid answer. Choose: $($Choices -join ', ')" Red
     }
 }
 
@@ -62,16 +63,16 @@ function Read-Choice {
 # Config + sqlcmd resolution
 # ---------------------------------------------------------------------------
 function Read-Config {
-    if (-not (Test-Path $ConfigPath)) { throw "Ficheiro de configuracao nao encontrado: $ConfigPath" }
+    if (-not (Test-Path $ConfigPath)) { throw "Config file not found: $ConfigPath" }
     $cfg = Get-Content $ConfigPath -Raw | ConvertFrom-Json
     foreach ($f in 'server','database','authentication') {
-        if (-not $cfg.$f) { throw "Campo '$f' em falta em deploy-config.json" }
+        if (-not $cfg.$f) { throw "Missing '$f' field in deploy-config.json" }
     }
     if ($cfg.authentication -notin 'Windows','SQL') {
-        throw "authentication deve ser 'Windows' ou 'SQL', recebido: $($cfg.authentication)"
+        throw "authentication must be 'Windows' or 'SQL', got: $($cfg.authentication)"
     }
     if ($cfg.server -eq 'SERVER\INSTANCE') {
-        throw "deploy-config.json ainda tem o placeholder 'SERVER\INSTANCE'. Edite-o antes de correr."
+        throw "deploy-config.json still has the 'SERVER\INSTANCE' placeholder. Edit it before running."
     }
     return $cfg
 }
@@ -89,7 +90,7 @@ function Resolve-Sqlcmd {
         $found = Get-ChildItem $c -ErrorAction SilentlyContinue | Sort-Object FullName -Descending | Select-Object -First 1
         if ($found) { return $found.FullName }
     }
-    throw "sqlcmd nao encontrado. Instale SQL Server Command Line Utilities ou aponte sqlcmdPath em deploy-config.json."
+    throw "sqlcmd not found. Install the SQL Server Command Line Utilities or set sqlcmdPath in deploy-config.json."
 }
 
 function Build-SqlcmdArgs {
@@ -110,7 +111,7 @@ function Test-Connection-Sql {
     try {
         $args_ = Build-SqlcmdArgs -Cfg $Cfg -ScriptPath $tmp -Password $Password
         $out = & $SqlcmdExe @args_ 2>&1
-        if ($LASTEXITCODE -ne 0) { throw "Falha na ligacao ($LASTEXITCODE): $out" }
+        if ($LASTEXITCODE -ne 0) { throw "Connection failed ($LASTEXITCODE): $out" }
         return ($out -join "`n")
     } finally {
         Remove-Item $tmp -ErrorAction SilentlyContinue
@@ -169,36 +170,36 @@ function Get-OrderedScripts {
 $cfg = Read-Config
 $sqlcmd = Resolve-Sqlcmd -Hint $cfg.sqlcmdPath
 Write-Header "Apply-Reports"
-Write-Host "Pasta raiz : $Root"
-Write-Host "sqlcmd     : $sqlcmd"
-Write-Host "Server     : $($cfg.server)"
-Write-Host "Database   : $($cfg.database)"
-Write-Host "Auth       : $($cfg.authentication)"
+Write-Host "Root folder : $Root"
+Write-Host "sqlcmd      : $sqlcmd"
+Write-Host "Server      : $($cfg.server)"
+Write-Host "Database    : $($cfg.database)"
+Write-Host "Auth        : $($cfg.authentication)"
 
 $password = $null
 if ($cfg.authentication -eq 'SQL') {
-    if (-not $cfg.username) { throw "authentication=SQL mas username vazio em deploy-config.json" }
-    Write-Host "User       : $($cfg.username)"
-    $sec = Read-Host "Password para $($cfg.username)" -AsSecureString
+    if (-not $cfg.username) { throw "authentication=SQL but username is empty in deploy-config.json" }
+    Write-Host "User        : $($cfg.username)"
+    $sec = Read-Host "Password for $($cfg.username)" -AsSecureString
     $password = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
         [Runtime.InteropServices.Marshal]::SecureStringToBSTR($sec)
     )
 }
 
 Write-Host ''
-Write-Color "A testar ligacao..." Gray
+Write-Color "Testing connection..." Gray
 try {
     $ver = Test-Connection-Sql -Cfg $cfg -SqlcmdExe $sqlcmd -Password $password
     Write-Color "OK" Green
     Write-Host ($ver.Split("`n") | Select-Object -First 2 | Out-String).TrimEnd()
 } catch {
-    Write-Color "FALHA: $_" Red
+    Write-Color "FAILED: $_" Red
     exit 1
 }
 
 $state = Read-State
 $allFolders = Get-OrderedFolders
-if (-not $allFolders) { Write-Color "Nenhuma subpasta numerada encontrada." Red; exit 1 }
+if (-not $allFolders) { Write-Color "No numbered subfolder found." Red; exit 1 }
 
 $skipList = @()
 if ($cfg.PSObject.Properties.Name -contains 'skipFolders' -and $cfg.skipFolders) {
@@ -209,9 +210,9 @@ $skipped = @($allFolders | Where-Object { Test-IsSkipped -FolderName $_.Name -Sk
 
 $okCount = ($state.GetEnumerator() | Where-Object { $_.Value.status -eq 'OK' }).Count
 Write-Host ''
-Write-Color "Pastas detectadas: $($allFolders.Count) (a executar: $($folders.Count), ignoradas: $($skipped.Count)). Aplicadas com sucesso anteriormente: $okCount." Gray
+Write-Color "Folders detected: $($allFolders.Count) (to run: $($folders.Count), ignored: $($skipped.Count)). Previously applied successfully: $okCount." Gray
 if ($skipped.Count -gt 0) {
-    Write-Color "Ignoradas via config (skipFolders):" Yellow
+    Write-Color "Ignored via config (skipFolders):" Yellow
     foreach ($f in $skipped) { Write-Host "  - $($f.Name)" }
 }
 
@@ -234,13 +235,13 @@ foreach ($folder in $folders) {
     foreach ($s in $scripts) { Write-Host "  - $($s.Name)" }
     if ($prev) {
         $col = switch ($prev.status) { 'OK' {'Green'} 'PARTIAL' {'Yellow'} default {'Red'} }
-        Write-Color ("Estado anterior: {0} em {1}" -f $prev.status, $prev.timestamp) $col
+        Write-Color ("Previous state: {0} at {1}" -f $prev.status, $prev.timestamp) $col
     }
 
-    $choice = Read-Choice "Aplicar esta pasta?" @('Y','N','Q')
-    if ($choice -eq 'Q') { Write-Color "Cancelado pelo utilizador." Yellow; break }
+    $choice = Read-Choice "Apply this folder?" @('Y','N','Q')
+    if ($choice -eq 'Q') { Write-Color "Cancelled by user." Yellow; break }
     if ($choice -eq 'N') {
-        Write-Color "Saltada." Gray
+        Write-Color "Skipped." Gray
         Log "SKIP folder $($folder.Name) (user)"
         $summary.SKIPPED++
         continue
@@ -264,20 +265,20 @@ foreach ($folder in $folders) {
                 $folderResult.scriptsRun += @{ script = $s.Name; status = 'OK' }
                 break
             } else {
-                Write-Color "     FALHA (exit $code)" Red
+                Write-Color "     FAILED (exit $code)" Red
                 $tail = ($output | Select-Object -Last 20) -join "`n"
                 Write-Host $tail
-                $err = Read-Choice "Acao?" @('R','S','A')
+                $err = Read-Choice "Action?" @('R','S','A')
                 if ($err -eq 'R') { continue }
                 if ($err -eq 'S') {
-                    Write-Color "     Script saltado." Yellow
+                    Write-Color "     Script skipped." Yellow
                     Log "SKIP script $($s.Name) (user, after error)"
                     $folderResult.scriptsRun += @{ script = $s.Name; status = 'SKIPPED' }
                     if ($folderResult.status -eq 'OK') { $folderResult.status = 'PARTIAL' }
                     break
                 }
                 if ($err -eq 'A') {
-                    Write-Color "     Pasta abortada." Red
+                    Write-Color "     Folder aborted." Red
                     Log "ABORT folder $($folder.Name) at $($s.Name) (user)"
                     $folderResult.scriptsRun += @{ script = $s.Name; status = 'FAILED' }
                     $folderResult.status = 'FAILED'
@@ -292,23 +293,23 @@ foreach ($folder in $folders) {
     $state[$folder.Name] = $folderResult
     Save-State -State $state
     switch ($folderResult.status) {
-        'OK'      { Write-Color "Pasta concluida (OK)." Green;            $summary.OK++ }
-        'PARTIAL' { Write-Color "Pasta concluida com skips (PARTIAL)." Yellow; $summary.PARTIAL++ }
-        'FAILED'  { Write-Color "Pasta abortada (FAILED)." Red;           $summary.FAILED++ }
+        'OK'      { Write-Color "Folder completed (OK)." Green;             $summary.OK++ }
+        'PARTIAL' { Write-Color "Folder completed with skips (PARTIAL)." Yellow; $summary.PARTIAL++ }
+        'FAILED'  { Write-Color "Folder aborted (FAILED)." Red;             $summary.FAILED++ }
     }
 
     if ($abortFolder) {
-        $cont = Read-Choice "Continuar para a proxima pasta?" @('Y','Q')
+        $cont = Read-Choice "Continue to the next folder?" @('Y','Q')
         if ($cont -eq 'Q') { $abortAll = $true }
     }
 }
 
-Write-Header "Resumo"
+Write-Header "Summary"
 Write-Color ("OK      : {0}" -f $summary.OK) Green
 Write-Color ("PARTIAL : {0}" -f $summary.PARTIAL) Yellow
 Write-Color ("FAILED  : {0}" -f $summary.FAILED) Red
 Write-Color ("SKIPPED : {0}" -f $summary.SKIPPED) Gray
 Write-Host ''
-Write-Host "Log : $logFile"
-Write-Host "Estado: $StateFile"
+Write-Host "Log   : $logFile"
+Write-Host "State : $StateFile"
 Log "=== Run finished. OK=$($summary.OK) PARTIAL=$($summary.PARTIAL) FAILED=$($summary.FAILED) SKIPPED=$($summary.SKIPPED) ==="

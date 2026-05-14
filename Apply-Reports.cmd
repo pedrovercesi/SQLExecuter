@@ -1,10 +1,10 @@
 @echo off
-REM Wrapper de duplo-clique para Apply-Reports.ps1
-REM Executa o script PowerShell com bypass de execution policy, mantem a janela aberta no fim.
+REM Double-click wrapper for Apply-Reports.ps1
+REM Runs the PowerShell script with execution policy bypass and keeps the window open at the end.
 setlocal
 set "SCRIPT_DIR=%~dp0"
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT_DIR%Apply-Reports.ps1"
 echo.
-echo --- Fim. Pressione qualquer tecla para fechar ---
+echo --- Done. Press any key to close ---
 pause >nul
 endlocal
