@@ -1,0 +1,10 @@
+{
+  "server": "INSTANCE_SQL",
+  "database": "DatabaseName",
+  "authentication": "SQL", 
+  "username": "userSQL",
+  "sqlcmdPath": "sqlcmd",
+  "skipFolders": [
+    "1.Skip"
+  ]
+}
