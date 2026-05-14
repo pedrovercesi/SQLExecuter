@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
     Apply-Reports.ps1
-    Runner interactivo para aplicar os scripts SQL desta pasta contra MCB_EbankitAnalyticsStaging.
+    Runner interactivo para aplicar os scripts SQL desta pasta contra a base de dados alvo.
     Itera as subpastas por ordem numerica (0, 1, 2, ...) e dentro de cada pasta executa os .sql
     por ordem numerica via sqlcmd. Suporta resume via .deploy-state.json e log em logs/.
 #>
@@ -168,7 +168,7 @@ function Get-OrderedScripts {
 # ---------------------------------------------------------------------------
 $cfg = Read-Config
 $sqlcmd = Resolve-Sqlcmd -Hint $cfg.sqlcmdPath
-Write-Header "Apply-Reports - MCB Operational Reports"
+Write-Header "Apply-Reports"
 Write-Host "Pasta raiz : $Root"
 Write-Host "sqlcmd     : $sqlcmd"
 Write-Host "Server     : $($cfg.server)"
